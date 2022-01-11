@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import plotly.figure_factory as ff
 import numpy as np
 from dateutil.relativedelta import relativedelta
+import plotly.express as px
 
 
 conn = pyodbc.connect('Driver={SQL Server};'
@@ -115,59 +116,11 @@ inq_display_col = ['Property', 'Account', 'Company', 'Name', 'Arrival', 'Guests'
 sm_inquiry = inquiry[(inquiry['Owner Name'] == 'Luis Wan') & (inquiry['Status'] == 'Opened')][inq_display_col]
 
 
-
 # Plot 1
-fig1 = make_subplots(rows=1, cols=2, subplot_titles=('Monthly Definite RNs', 'Monthly Definite RN Revenue and Rental Revenue'), 
-                    column_widths=[0.05, 0.05], row_heights=[0.3], shared_xaxes=True)
-
-
-sm_current_production['to_sort'] = sm_current_production['Date Definite Month'].apply(lambda x: months.index(x))
-sm_current_production = sm_current_production.sort_values('to_sort')
 
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-bar1 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_production['Blended Roomnights'], name='RNs')
-
-bar2 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_production['Blended Guestroom Revenue Total'], name='RN Revenue')
-
-bar3 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_production['Blended Rental Revenue'], name='Rental Revenue')
-
-fig1.add_trace(bar1, row=1, col=1)
-fig1.add_trace(bar2, row=1, col=2)
-fig1.add_trace(bar3, row=1, col=2)
-
-fig1.layout.xaxis.tickvals = months
-fig1.layout.xaxis.tickformat = '%b'
-
-fig1.update_layout(title='Definite Bookings', autosize=False, width=1800, height=500)
-
-
-# Plot 2
-fig2 = make_subplots(rows=12, cols=1, 
-                     column_widths=[0.3], row_heights=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], shared_xaxes=True,
-                     specs=[[{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], 
-                            [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}], [{"type": "domain"}]])
-
-max_val = 1000
-threshold = 500
-
-for i, month in enumerate(months):
-    bullet = go.Indicator(mode='number+gauge+delta', title={'text': month}, delta={'reference': threshold},
-                          value=sm_current_production[sm_current_production['Date Definite Month'] == month]['Blended Roomnights'].sum(),
-                          gauge={'shape': 'bullet', 'bordercolor': 'white', 'borderwidth': 2,
-                                 'axis': {'range': [0, max_val], 'ticklen': 0.000005, 'tickwidth': 0.0005},
-                                 'steps': [{'range': [0, max_val], 'color': 'lightgray'},
-                                           {'range': [0, threshold], 'color': 'gray'}],
-                                 'threshold': {'line': {'color': 'red', 'width': 2}, 'thickness': 0.75,
-                                               'value': threshold}})
-    fig2.add_trace(bullet, row=i+1, col=1)
-
-
-fig2.update_layout(title='Production Vs Budget', autosize=False, width=1500, height=750)
-
-
-# Plot 3
-fig3 = make_subplots(rows=3, cols=1, 
+fig1 = make_subplots(rows=3, cols=1, 
                      column_widths=[0.5], row_heights=[0.8, 0.8, 0.8], shared_xaxes=True)
 
 
@@ -175,50 +128,17 @@ history_count = history_compare.groupby(['Booked Month', 'Booked Year']).size().
 history_count['to_sort']=history_count['Booked Month'].apply(lambda x: months.index(x))
 history_count = history_count.sort_values('to_sort')
 
-line1 = go.Scatter(x=history_count[history_count['Booked Year'] == 2019]['Booked Month'], y=history_count[history_count['Booked Year'] == 2019]['NumberOfBK'], mode='lines+markers', name='2019')
+years = history_count['Booked Year'].unique().tolist()
 
-line2 = go.Scatter(x=history_count[history_count['Booked Year'] == 2020]['Booked Month'], y=history_count[history_count['Booked Year'] == 2020]['NumberOfBK'], mode='lines+markers', name='2020')
-
-line3 = go.Scatter(x=history_count[history_count['Booked Year'] == 2021]['Booked Month'], y=history_count[history_count['Booked Year'] == 2021]['NumberOfBK'], mode='lines+markers', name='2021')
-
-line4 = go.Scatter(x=history_count[history_count['Booked Year'] == 2022]['Booked Month'], y=history_count[history_count['Booked Year'] == 2022]['NumberOfBK'], mode='lines+markers', name='2022')
-
-
-fig3.add_trace(line1, row=1, col=1)
-fig3.add_trace(line2, row=1, col=1)
-fig3.add_trace(line3, row=1, col=1)
-fig3.add_trace(line4, row=1, col=1)
-
-fig3.update_layout(title='3 years Demand History Comparsion', xaxis_title='Month', xaxis_showticklabels=True)
+for year in years:
+    line1 = go.Scatter(x=history_count[history_count['Booked Year'] == int(year)]['Booked Month'], 
+                       y=history_count[history_count['Booked Year'] == int(year)]['NumberOfBK'], 
+                       mode='lines+markers', name=str(int(year)))
+    fig1.add_trace(line1, row=1, col=1)
 
 
-# Plot 4
-fig4 = make_subplots(rows=3, cols=1, subplot_titles=('Tentative Bookings', 'Prospect Bookings', 'Inquiries'), 
-                    column_widths=[0.05], row_heights=[0.3, 0.3, 0.3], vertical_spacing=0.1, horizontal_spacing=0.0, 
-                    specs=[[{"type": "table"}], [{"type": "table"}], [{"type": "table"}]])
+fig1.update_layout(title='3 years Demand History Comparsion', xaxis_title='Month', xaxis_showticklabels=True)
 
-table1_obj = go.Table(header = dict(values=bk_display_col),
-                      cells = dict(values=[sm_current_business_t[k].tolist() for k in sm_current_business_t.columns[0:]]))
 
-table2_obj = go.Table(header = dict(values=bk_display_col),
-                      cells = dict(values=[sm_current_business_p[k].tolist() for k in sm_current_business_p.columns[0:]]))
 
-table3_obj = go.Table(header = dict(values=inq_display_col),
-                      cells = dict(values=[sm_inquiry[k].tolist() for k in sm_inquiry.columns[0:]]))
-
-fig4.add_trace(table1_obj, row=1, col=1)
-fig4.add_trace(table2_obj, row=2, col=1)
-fig4.add_trace(table3_obj, row=3, col=1)
-
-fig4.update_layout(title='Current Business', autosize=False, width=1800, height=800)
-
-def figures_to_html(figs, filename):
-    dashboard = open(filename, 'w')
-    dashboard.write("<html><head></head><body>" + "\n")
-    for fig in figs:
-        inner_html = fig.to_html().split('<body>')[1].split('</body>')[0]
-        dashboard.write(inner_html)
-    dashboard.write("</body></html>" + "\n")
-
-figures_to_html([fig1, fig2, fig3, fig4], filename='performance_dashboard.html')
-
+pyo.plot(fig1, filename='line.html')
