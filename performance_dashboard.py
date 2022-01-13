@@ -2,6 +2,7 @@
 # main.py - 
 
 import pyodbc
+import plotly
 from datetime import date
 import pandas as pd
 import plotly.offline as pyo
@@ -174,6 +175,9 @@ fig2.update_layout(title='Production Vs Budget', autosize=False, width=1500, hei
 
 
 # Plot 3
+
+cols = plotly.colors.DEFAULT_PLOTLY_COLORS
+
 fig3 = make_subplots(rows=3, cols=1, 
                      column_widths=[0.5], row_heights=[0.8, 0.8, 0.8], shared_xaxes=True)
 
@@ -183,11 +187,30 @@ history_count = history_count.sort_values('to_sort')
 
 years = history_count['Booked Year'].unique().tolist()
 
-for year in years:
+for i, year in enumerate(years):
     line1 = go.Scatter(x=history_count[history_count['Booked Year'] == int(year)]['Booked Month'], 
                        y=history_count[history_count['Booked Year'] == int(year)]['NumberOfBK'], 
-                       mode='lines+markers', name=str(int(year)))
+                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year), showlegend=False)
     fig3.add_trace(line1, row=1, col=1)
+
+
+arrival_rn_revenue = arrival_date_df.groupby(['Arrival Month', 'Arrival Year']).sum().reset_index()
+arrival_rn_revenue['to_sort']=arrival_rn_revenue['Arrival Month'].apply(lambda x: months.index(x))
+arrival_rn_revenue = arrival_rn_revenue.sort_values('to_sort')
+
+years = arrival_rn_revenue['Arrival Year'].unique().tolist()
+
+for i, year in enumerate(years):
+    line1 = go.Scatter(x=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Arrival Month'], 
+                       y=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Blended Roomnights'], 
+                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year))
+
+    line2 = go.Scatter(x=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Arrival Month'], 
+                       y=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Blended Guestroom Revenue Total'], 
+                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year), showlegend=False)
+    
+    fig3.add_trace(line1, row=2, col=1)
+    fig3.add_trace(line2, row=3, col=1)
 
 fig3.update_layout(title='3 years Demand History Comparsion', xaxis_title='Month', xaxis_showticklabels=True)
 
