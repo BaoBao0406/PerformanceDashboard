@@ -27,9 +27,9 @@ user = user.set_index('Id')['Name'].to_dict()
 # Date Definite data
 # Set date range
 now = datetime.datetime.now()
-Start_year_prod = now - relativedelta(years=3)
-Start_Date_prod = str(Start_year_prod.year) + '-01-01'
-End_Date_prod = str(now.year) + '-12-31'
+start_year_def = now - relativedelta(years=3)
+start_date_def = str(start_year_def.year) + '-01-01'
+end_date_def = str(now.year) + '-12-31'
 date_def_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
                                  BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, \
                                  BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
@@ -41,7 +41,7 @@ date_def_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac
                               ON BK.nihrm__Agency__c = ag.Id \
                           WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
                               (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND (BK.nihrm__BookingStatus__c = 'Definite') AND \
-                              (BK.nihrm__DateDefinite__c BETWEEN CONVERT(datetime, '" + Start_Date_prod + "') AND CONVERT(datetime, '" + End_Date_prod + "'))", conn)
+                              (BK.nihrm__DateDefinite__c BETWEEN CONVERT(datetime, '" + start_date_def + "') AND CONVERT(datetime, '" + end_date_def + "'))", conn)
 date_def_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 
                       'Blended Roomnights', 'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue', 'Status',
                       'Last Status Date', 'Booked', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#', 'DateDefinite', 'Date Definite Month', 'Date Definite Year']
@@ -49,9 +49,9 @@ date_def_df['Owner Name'].replace(user, inplace=True)
 
 
 # Booked date data
-Start_year_hist = now - relativedelta(years=3)
-Start_Date_hist = str(Start_year_hist.year) + '-01-01'
-End_Date_hist = str(now.year) + '-12-31'
+start_year_booked = now - relativedelta(years=3)
+start_date_booked = str(start_year_booked.year) + '-01-01'
+end_date_booked = str(now.year) + '-12-31'
 booked_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, BK.VCL_Arrival_Year__c, BK.VCL_Arrival_Month__c, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
                                  BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, \
                                  BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
@@ -63,7 +63,7 @@ booked_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name,
                               ON BK.nihrm__Agency__c = ag.Id \
                           WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
                               (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND \
-                              (BK.nihrm__BookedDate__c BETWEEN CONVERT(datetime, '" + Start_Date_hist + "') AND CONVERT(datetime, '" + End_Date_hist + "'))", conn)
+                              (BK.nihrm__BookedDate__c BETWEEN CONVERT(datetime, '" + start_date_booked + "') AND CONVERT(datetime, '" + end_date_booked + "'))", conn)
 booked_date_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Arrival Year', 'Arrival Month', 'Departure', 
                       'Blended Roomnights', 'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue', 'Status',
                       'Last Status Date', 'Booked', 'Booked Year', 'Booked Month', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#', 'DateDefinite', 'Date Definite Month', 'Date Definite Year']
@@ -71,20 +71,25 @@ booked_date_df['Owner Name'].replace(user, inplace=True)
 
 
 # Arrival date data
-arrival_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
+start_year_arrival = now - relativedelta(years=3)
+end_year_arrival = now + relativedelta(years=5)
+start_date_arrival = str(start_year_arrival.year) + '-01-01'
+end_date_arrival = str(end_year_arrival.year) + '-12-31'
+arrival_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, BK.VCL_Arrival_Year__c, BK.VCL_Arrival_Month__c, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
                                     BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, \
                                     BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
-                                    FORMAT(BK.nihrm__BookedDate__c, 'MM/dd/yyyy') AS BookedDate, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, BK.Booking_ID_Number__c \
+                                    FORMAT(BK.nihrm__BookedDate__c, 'MM/dd/yyyy') AS BookedDate, BK.Booked_Year__c, BK.Booked_Month__c, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__DateDefinite__c, 'MM/dd/yyyy') AS DateDefinite, BK.Date_Definite_Month__c, BK.Date_Definite_Year__c \
                                 FROM dbo.nihrm__Booking__c AS BK \
                                 LEFT JOIN dbo.Account AS ac \
                                     ON BK.nihrm__Account__c = ac.Id \
                                 LEFT JOIN dbo.Account AS ag \
                                     ON BK.nihrm__Agency__c = ag.Id \
                                 WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
-                                    (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND (BK.nihrm__BookingStatus__c IN ('Tentative', 'Prospect'))", conn)
-arrival_date_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 
+                                    (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND \
+                                    (BK.nihrm__ArrivalDate__c BETWEEN CONVERT(datetime, '" + start_date_arrival + "') AND CONVERT(datetime, '" + end_date_arrival + "'))", conn)
+arrival_date_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Arrival Year', 'Arrival Month', 'Departure', 
                             'Blended Roomnights', 'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue', 'Status',
-                            'Last Status Date', 'Booked', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#']
+                            'Last Status Date', 'Booked', 'Booked Year', 'Booked Month', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#', 'DateDefinite', 'Date Definite Month', 'Date Definite Year']
 arrival_date_df['Owner Name'].replace(user, inplace=True)
 arrival_date_df['Days before Arrive'] = ((pd.to_datetime(arrival_date_df['Arrival']) - pd.Timestamp.now().normalize()).dt.days).astype(int)
 arrival_date_df.sort_values(by=['Days before Arrive'], inplace=True)
