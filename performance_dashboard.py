@@ -1,9 +1,8 @@
 #! python3
-# main.py - 
+# performance_dashboard.py - 
 
-import pyodbc
+import pyodbc, pickle, re
 import plotly
-from datetime import date
 import pandas as pd
 import plotly.offline as pyo
 import plotly.graph_objs as go
@@ -12,6 +11,7 @@ import plotly.figure_factory as ff
 import numpy as np
 from dateutil.relativedelta import relativedelta
 
+##################################################################################################
 
 conn = pyodbc.connect('Driver={SQL Server};'
                       'Server=VOPPSCLDBN01\VOPPSCLDBI01;'
@@ -24,13 +24,17 @@ user = pd.read_sql('SELECT DISTINCT(Id), Name \
                     FROM dbo.[User]', conn)
 user = user.set_index('Id')['Name'].to_dict()
 
+##################################################################################################
 
-# Date Definite data
+# SQL queries
+
 # Set date range
 now = datetime.datetime.now()
 start_year_def = now - relativedelta(years=3)
 start_date_def = str(start_year_def.year) + '-01-01'
 end_date_def = str(now.year) + '-12-31'
+
+# Date Definite data
 date_def_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
                                  BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, \
                                  BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
@@ -103,34 +107,131 @@ inquiry.columns = ['Owner Name', 'Property', 'Account', 'Company', 'Name', 'Arri
 inquiry['Owner Name'].replace(user, inplace=True)
 
 
+# ML prediction
+BK_ml_tmp = pd.read_sql("SELECT BK.Id, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__ArrivalDate__c, 'yyyy-MM-dd') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'yyyy-MM-dd') AS DepartureDate, BK.nihrm__CommissionPercentage__c, BK.Percentage_of_Attrition__c, BK.nihrm__Property__c, BK.nihrm__FoodBeverageMinimum__c, ac.Name AS ACName, ag.Name AS AGName, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, \
+                             BK.RSO_Manager__c, BK.Non_Compete_Clause__c, ac.nihrm__RegionName__c, ac.Industry, BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__CurrentBlendedEventRevenue4__c, BK.nihrm__BookingMarketSegmentName__c, BK.Promotion__c, BK.nihrm__CurrentBlendedADR__c, BK.nihrm__PeakRoomnightsBlocked__c, \
+                             FORMAT(BK.nihrm__BookedDate__c, 'yyyy-MM-dd') AS BookedDate, FORMAT(BK.nihrm__LastStatusDate__c, 'yyyy-MM-dd') AS LastStatusDate \
+                      FROM dbo.nihrm__Booking__c AS BK \
+                             LEFT JOIN dbo.Account AS ac \
+                                 ON BK.nihrm__Account__c = ac.Id \
+                             LEFT JOIN dbo.Account AS ag \
+                                 ON BK.nihrm__Agency__c = ag.Id \
+                      WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
+                             (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND (BK.nihrm__BookingStatus__c IN ('Tentative', 'Prospect'))", conn)
+BK_ml_tmp['RSO_Manager__c'].replace(user, inplace=True)
+BK_ml_tmp.columns = ['Id', 'BK_no', 'ArrivalDate', 'DepartureDate', 'Commission', 'Attrition', 'Property', 'F&B Minimum', 'Account', 'Agency', 'End User Region',
+                  'End User SIC', 'Booking Type', 'RSO Manager', 'Non-compete', 'Account: Region', 'Account: Industry', 'Blended Roomnights', 'Blended Guestroom Revenue Total',
+                  'Blended F&B Revenue', 'Blended Rental Revenue', 'Blended AV Revenue', 'Market Segment', 'Promotion', 'Blended ADR', 'Peak Roomnights Blocked', 
+                  'BookedDate', 'LastStatusDate']
+
+Event_ml_tmp = pd.read_sql("SELECT ET.nihrm__Booking__c, ET.nihrm__Property__c, MAX(ET.nihrm__AgreedAttendance__c) \
+                         FROM dbo.nihrm__BookingEvent__c AS ET \
+                         WHERE (ET.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND (ET.nihrm__StartDate__c BETWEEN CONVERT(datetime, '" + start_date_arrival + "') AND CONVERT(datetime, '" + end_date_arrival + "')) \
+                         GROUP BY ET.nihrm__Booking__c, ET.nihrm__Property__c", conn)
+Event_ml_tmp.columns = ['Id', 'property', 'Attendance']
+Event_ml_tmp = Event_ml_tmp[['Id', 'Attendance']]
+BK_ml_tmp = BK_ml_tmp.join(Event_ml_tmp.set_index('Id'), on='Id')
+
+
+
+##################################################################################################
+
+# ML prediction
+
+BK_ml_percent = BK_ml_tmp[['Property', 'Account: Region', 'Account: Industry', 'Agency', 'End User Region', 'End User SIC', 'Booking Type', 'Blended Roomnights',
+                        'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue', 'Blended AV Revenue', 'Attendance',
+                        'RSO Manager', 'Market Segment', 'Promotion', 'Blended ADR', 'Peak Roomnights Blocked', 'ArrivalDate', 'DepartureDate', 
+                        'BookedDate', 'LastStatusDate']]
+
+# calculate Inhouse day (Departure - Arrival)    
+BK_ml_percent['Inhouse day'] = (pd.to_datetime(BK_ml_percent['DepartureDate']).dt.date - pd.to_datetime(BK_ml_percent['ArrivalDate']).dt.date).dt.days
+# calculate Lead day (Arrival - Booked) 
+BK_ml_percent['Lead day'] = (pd.to_datetime(BK_ml_percent['ArrivalDate']).dt.date - pd.to_datetime(BK_ml_percent['BookedDate']).dt.date).dt.days
+# calculate Decision day (Last Status date - Booked) 
+BK_ml_percent['Decision day'] = (pd.to_datetime(BK_ml_percent['LastStatusDate']).dt.date - pd.to_datetime(BK_ml_percent['BookedDate']).dt.date).dt.days
+# booking info Arrival Month
+BK_ml_percent['Arrival Month'] = pd.DatetimeIndex(BK_ml_percent['ArrivalDate']).month
+BK_ml_percent['Arrival Month_sin'] = np.sin(2 * np.pi * BK_ml_percent['Arrival Month']/12)
+# booking info Booked Month
+BK_ml_percent['Booked Month'] = pd.DatetimeIndex(BK_ml_percent['BookedDate']).month
+BK_ml_percent['Booked Month_sin'] = np.sin(2 * np.pi * BK_ml_percent['Booked Month']/12)
+# booking info Last Status Month
+BK_ml_percent['Last Status Month'] = pd.DatetimeIndex(BK_ml_percent['LastStatusDate']).month
+BK_ml_percent['Last Status Month_sin'] = np.sin(2 * np.pi * BK_ml_percent['Last Status Month']/12)
+
+BK_ml_percent['Agency'] = BK_ml_percent['Agency'].apply(lambda x: 0 if x is np.nan else 1)
+BK_ml_percent['RSO Manager'] = BK_ml_percent['RSO Manager'].apply(lambda x: 0 if x is np.nan else 1)
+BK_ml_percent['Promotion'] = BK_ml_percent['Promotion'].apply(lambda x: 0 if x is np.nan else 1)
+
+BK_ml_percent = BK_ml_percent[['Property', 'Account: Region', 'Account: Industry', 'Agency', 'End User Region', 'End User SIC', 'Booking Type', 'Blended Roomnights', 'Blended Guestroom Revenue Total', 
+                                 'Blended F&B Revenue', 'Blended Rental Revenue', 'Blended AV Revenue', 'Attendance', 'RSO Manager', 'Market Segment', 'Promotion', 'Blended ADR', 'Peak Roomnights Blocked', 
+                                 'Inhouse day', 'Lead day', 'Decision day', 'Arrival Month_sin', 'Booked Month_sin', 'Last Status Month_sin']]
+
+# Load Transformer and prediction model
+path = 'I:\\10-Sales\\+Dept Admin (3Y, Internal)\\2021\\Personal Folders\\Patrick Leong\\Python Code\\Sales Dashboard\\'
+Transformer = open(path + 'Materization_percent_tf.pkl', 'rb')
+Transformer = pickle.load(Transformer)
+
+Model = open(path + 'Materization_percent_ml.pkl', 'rb')
+Model = pickle.load(Model)
+
+columns_to_standarize = ['Blended Roomnights', 'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue',
+                         'Blended AV Revenue', 'Attendance', 'Blended ADR', 'Peak Roomnights Blocked']
+columns_to_te = ['Property', 'Account: Region', 'Account: Industry', 'End User Region', 'End User SIC', 'Booking Type', 'Market Segment']
+column_normal = ['Agency', 'RSO Manager', 'Promotion', 'Inhouse day', 'Lead day', 'Decision day', 'Arrival Month_sin',
+                 'Booked Month_sin', 'Last Status Month_sin']
+
+column_name = columns_to_standarize + columns_to_te + column_normal
+
+BK_ml_percent_tf = Transformer.transform(BK_ml_percent)
+BK_ml_percent_tf = pd.DataFrame(BK_ml_percent_tf, columns=column_name)
+BK_ml_percent_tf = BK_ml_percent_tf.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
+BK_ml_percent_tf = BK_ml_percent_tf.astype(float)
+y_pred_tf = Model.predict_proba(BK_ml_percent_tf)
+
+# Join predication to BK ID no
+y_pred_tf = pd.DataFrame(y_pred_tf, columns = ['TD %', 'D %'])
+y_pred_tf.reset_index(drop=True, inplace=True)
+BK_ml_pred = BK_ml_tmp[['BK_no']]
+BK_ml_pred.reset_index(drop=True, inplace=True)
+BK_ml_pred = pd.concat([BK_ml_pred, y_pred_tf], axis=1)
+
+
+##################################################################################################
+
 # Pre process data
 
 # Definite
 sm_production = date_def_df[date_def_df['Owner Name'] == 'Luis Wan']
 current_year = 2021
 sm_current_production = sm_production[sm_production['Date Definite Year'] == current_year]
+sm_current_production.fillna("-", inplace = True)
 
 # Tentaive and Prospect
 sm_current_business = arrival_date_df[arrival_date_df['Owner Name'] == 'Luis Wan']
-bk_display_col = ['Property', 'Account', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 'Blended Roomnights', 'Days before Arrive']
+# join ml prediction table to T & P table
+sm_current_business = pd.merge(sm_current_business, BK_ml_pred, how='left', left_on=['Booking ID#'], right_on= ['BK_no'])
+sm_current_business['D %'] = sm_current_business['D %'].map(lambda x: "{0:.2f}%".format(x*100))
+sm_current_business.fillna("-", inplace = True)
+bk_display_col = ['Property', 'Account', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 'Blended Roomnights', 'D %', 'Days before Arrive']
 sm_current_business_t = sm_current_business[(sm_current_business['Status'] == 'Tentative') & (sm_current_business['Owner Name'] == 'Luis Wan')][bk_display_col]
 sm_current_business_p = sm_current_business[(sm_current_business['Status'] == 'Prospect') & (sm_current_business['Owner Name'] == 'Luis Wan')][bk_display_col]
 
 # Inquiry
 inq_display_col = ['Property', 'Account', 'Company', 'Name', 'Arrival', 'Guests', 'Total Rooms']
 sm_inquiry = inquiry[(inquiry['Owner Name'] == 'Luis Wan') & (inquiry['Status'] == 'Opened')][inq_display_col]
+sm_inquiry.fillna("-", inplace = True)
 
-
+##################################################################################################
 
 # Plot 1
 fig1 = make_subplots(rows=1, cols=2, subplot_titles=('Monthly Definite RNs', 'Monthly Definite RN Revenue and Rental Revenue'), 
                     column_widths=[0.05, 0.05], row_heights=[0.3], shared_xaxes=True)
 
+months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 sm_current_production['to_sort'] = sm_current_production['Date Definite Month'].apply(lambda x: months.index(x))
 sm_current_production = sm_current_production.sort_values('to_sort')
-
-months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 bar1 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_production['Blended Roomnights'], name='RNs')
 
@@ -246,3 +347,4 @@ def figures_to_html(figs, filename):
 
 figures_to_html([fig1, fig2, fig3, fig4], filename='performance_dashboard.html')
 
+##################################################################################################
