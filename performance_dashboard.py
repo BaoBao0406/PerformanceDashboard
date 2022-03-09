@@ -1,7 +1,8 @@
 #! python3
 # performance_dashboard.py - 
 
-import pyodbc, pickle, re, datetime
+import pyodbc, pickle, re
+from datetime import date, datetime
 import plotly
 import pandas as pd
 import plotly.offline as pyo
@@ -14,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 ##################################################################################################
 
 # Set date range
-now = datetime.datetime.now()
+now = datetime.now()
 start_year_def = now - relativedelta(years=3)
 start_date_def = str(start_year_def.year) + '-01-01'
 end_date_def = str(now.year) + '-12-31'
@@ -81,9 +82,9 @@ end_year_arrival = now + relativedelta(years=5)
 start_date_arrival = str(start_year_arrival.year) + '-01-01'
 end_date_arrival = str(end_year_arrival.year) + '-12-31'
 arrival_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, BK.VCL_Arrival_Year__c, BK.VCL_Arrival_Month__c, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
-                                    BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, \
-                                    BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
-                                    FORMAT(BK.nihrm__BookedDate__c, 'MM/dd/yyyy') AS BookedDate, BK.Booked_Year__c, BK.Booked_Month__c, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__DateDefinite__c, 'MM/dd/yyyy') AS DateDefinite, BK.Date_Definite_Month__c, BK.Date_Definite_Year__c \
+                                    BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__BookingStatus__c, FORMAT(BK.nihrm__LastStatusDate__c, 'MM/dd/yyyy') AS LastStatusDate, \
+                                    FORMAT(BK.nihrm__BookedDate__c, 'MM/dd/yyyy') AS BookedDate, BK.Booked_Year__c, BK.Booked_Month__c, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__DateDefinite__c, 'MM/dd/yyyy') AS DateDefinite, \
+                                    BK.Date_Definite_Month__c, BK.Date_Definite_Year__c,  FORMAT(BK.LastActivityDate, 'MM/dd/yyyy') AS LastActivityDate \
                                 FROM dbo.nihrm__Booking__c AS BK \
                                 LEFT JOIN dbo.Account AS ac \
                                     ON BK.nihrm__Account__c = ac.Id \
@@ -92,9 +93,9 @@ arrival_date_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name
                                 WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
                                     (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND \
                                     (BK.nihrm__ArrivalDate__c BETWEEN CONVERT(datetime, '" + start_date_arrival + "') AND CONVERT(datetime, '" + end_date_arrival + "'))", conn)
-arrival_date_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Arrival Year', 'Arrival Month', 'Departure', 
-                            'Blended Roomnights', 'Blended Guestroom Revenue Total', 'Blended F&B Revenue', 'Blended Rental Revenue', 'Status',
-                            'Last Status Date', 'Booked', 'Booked Year', 'Booked Month', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#', 'DateDefinite', 'Date Definite Month', 'Date Definite Year']
+arrival_date_df.columns = ['Owner Name', 'Property', 'Account', 'Company Country', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Arrival Year', 'Arrival Month', 'Departure', 'Blended Roomnights', 'Blended Guestroom Revenue Total', 
+                           'Blended F&B Revenue', 'Blended Rental Revenue', 'Status', 'Last Status Date', 'Booked', 'Booked Year', 'Booked Month', 'End User Region', 'End User SIC', 'Booking Type', 'Booking ID#', 'DateDefinite', 
+                           'Date Definite Month', 'Date Definite Year', 'LastActivityDate']
 arrival_date_df['Owner Name'].replace(user, inplace=True)
 arrival_date_df['Days before Arrive'] = ((pd.to_datetime(arrival_date_df['Arrival']) - pd.Timestamp.now().normalize()).dt.days).astype(int)
 arrival_date_df.sort_values(by=['Days before Arrive'], inplace=True)
@@ -108,15 +109,15 @@ inquiry['Owner Name'].replace(user, inplace=True)
 
 
 # ML prediction
-BK_ml_tmp = pd.read_sql("SELECT BK.Id, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__ArrivalDate__c, 'yyyy-MM-dd') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'yyyy-MM-dd') AS DepartureDate, BK.nihrm__CommissionPercentage__c, BK.Percentage_of_Attrition__c, BK.nihrm__Property__c, BK.nihrm__FoodBeverageMinimum__c, ac.Name AS ACName, ag.Name AS AGName, BK.End_User_Region__c, BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, \
-                             BK.RSO_Manager__c, BK.Non_Compete_Clause__c, ac.nihrm__RegionName__c, ac.Industry, BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__CurrentBlendedEventRevenue4__c, BK.nihrm__BookingMarketSegmentName__c, BK.Promotion__c, BK.nihrm__CurrentBlendedADR__c, BK.nihrm__PeakRoomnightsBlocked__c, \
-                             FORMAT(BK.nihrm__BookedDate__c, 'yyyy-MM-dd') AS BookedDate, FORMAT(BK.nihrm__LastStatusDate__c, 'yyyy-MM-dd') AS LastStatusDate \
-                      FROM dbo.nihrm__Booking__c AS BK \
+BK_ml_tmp = pd.read_sql("SELECT BK.Id, BK.Booking_ID_Number__c, FORMAT(BK.nihrm__ArrivalDate__c, 'yyyy-MM-dd') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'yyyy-MM-dd') AS DepartureDate, BK.nihrm__CommissionPercentage__c, BK.Percentage_of_Attrition__c, BK.nihrm__Property__c, BK.nihrm__FoodBeverageMinimum__c, ac.Name AS ACName, ag.Name AS AGName, BK.End_User_Region__c, \
+                                BK.End_User_SIC__c, BK.nihrm__BookingTypeName__c, BK.RSO_Manager__c, BK.Non_Compete_Clause__c, ac.nihrm__RegionName__c, ac.Industry, BK.nihrm__CurrentBlendedRoomnightsTotal__c, BK.nihrm__BlendedGuestroomRevenueTotal__c, BK.VCL_Blended_F_B_Revenue__c, BK.nihrm__CurrentBlendedEventRevenue7__c, BK.nihrm__CurrentBlendedEventRevenue4__c, \
+                                BK.nihrm__BookingMarketSegmentName__c, BK.Promotion__c, BK.nihrm__CurrentBlendedADR__c, BK.nihrm__PeakRoomnightsBlocked__c, FORMAT(BK.nihrm__BookedDate__c, 'yyyy-MM-dd') AS BookedDate, FORMAT(BK.nihrm__LastStatusDate__c, 'yyyy-MM-dd') AS LastStatusDate \
+                         FROM dbo.nihrm__Booking__c AS BK \
                              LEFT JOIN dbo.Account AS ac \
                                  ON BK.nihrm__Account__c = ac.Id \
                              LEFT JOIN dbo.Account AS ag \
                                  ON BK.nihrm__Agency__c = ag.Id \
-                      WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
+                         WHERE (BK.nihrm__BookingTypeName__c NOT IN ('ALT Alternative', 'CN Concert', 'IN Internal')) AND \
                              (BK.nihrm__Property__c NOT IN ('Sands Macao Hotel')) AND (BK.nihrm__BookingStatus__c IN ('Tentative', 'Prospect'))", conn)
 BK_ml_tmp['RSO_Manager__c'].replace(user, inplace=True)
 BK_ml_tmp.columns = ['Id', 'BK_no', 'ArrivalDate', 'DepartureDate', 'Commission', 'Attrition', 'Property', 'F&B Minimum', 'Account', 'Agency', 'End User Region',
@@ -213,9 +214,20 @@ sm_current_business = arrival_date_df[arrival_date_df['Owner Name'] == 'Luis Wan
 sm_current_business = pd.merge(sm_current_business, BK_ml_pred, how='left', left_on=['Booking ID#'], right_on= ['BK_no'])
 sm_current_business['D %'] = sm_current_business['D %'].map(lambda x: "{0:.2f}%".format(x*100))
 sm_current_business.fillna("-", inplace = True)
-bk_display_col = ['Property', 'Account', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 'Blended Roomnights', 'D %', 'Days before Arrive']
+
+
+sm_current_business['LastActivityDate'] = np.where(sm_current_business['LastActivityDate'] == '-', sm_current_business['Booked'], sm_current_business['LastActivityDate'])
+sm_current_business['color_display'] = np.where((date.today() - pd.to_datetime(sm_current_business['LastActivityDate']).dt.date).dt.days < 14, 'rgb(189, 215, 231)', 'rgb(230, 230, 230)')
+sm_current_business['color_display'] = np.where((date.today() - pd.to_datetime(sm_current_business['Booked']).dt.date).dt.days < 14, 'rgb(255, 255, 102)', sm_current_business['color_display'])
+
+
+
+bk_display_col = ['Property', 'Account', 'Agency', 'Booking: Booking Post As', 'Arrival', 'Departure', 'Blended Roomnights', 'D %', 'Days before Arrive', 'color_display']
 sm_current_business_t = sm_current_business[(sm_current_business['Status'] == 'Tentative') & (sm_current_business['Owner Name'] == 'Luis Wan')][bk_display_col]
 sm_current_business_p = sm_current_business[(sm_current_business['Status'] == 'Prospect') & (sm_current_business['Owner Name'] == 'Luis Wan')][bk_display_col]
+
+
+
 
 # Inquiry
 inq_display_col = ['Property', 'Account', 'Company', 'Name', 'Arrival', 'Guests', 'Total Rooms']
@@ -262,7 +274,7 @@ sm_current_production.fillna("-", inplace = True)
 total_production = arrival_date_df[arrival_date_df['Status'] == 'Definite']
 
 # date range for bar chart
-current_year = datetime.datetime.now()
+current_year = datetime.now()
 end_year = now + relativedelta(years=2)
 #plot_start_date = str(current_year.year) + '-' + str(current_year.month) + '-01'
 plot_start_date = str(current_year.year) + '-' + '01' + '-01'
@@ -335,7 +347,7 @@ table1_obj = go.Table(header = dict(values=bk_display_col),
                       cells = dict(values=[sm_current_business_t[k].tolist() for k in sm_current_business_t.columns[0:]]))
 
 table2_obj = go.Table(header = dict(values=bk_display_col),
-                      cells = dict(values=[sm_current_business_p[k].tolist() for k in sm_current_business_p.columns[0:]]))
+                      cells = dict(values=[sm_current_business_p[k].tolist() for k in sm_current_business_p.columns[0:]], line_color='white', fill_color=[sm_current_business_p['color_display']]))
 
 
 fig4.add_trace(table1_obj, row=1, col=1)
