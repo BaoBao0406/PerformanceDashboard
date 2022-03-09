@@ -1,7 +1,7 @@
 #! python3
 # performance_dashboard.py - 
 
-import pyodbc, pickle, re
+import pyodbc, pickle, re, datetime
 import plotly
 import pandas as pd
 import plotly.offline as pyo
@@ -13,11 +13,17 @@ from dateutil.relativedelta import relativedelta
 
 ##################################################################################################
 
+# Set date range
+now = datetime.datetime.now()
+start_year_def = now - relativedelta(years=3)
+start_date_def = str(start_year_def.year) + '-01-01'
+end_date_def = str(now.year) + '-12-31'
+
+
 conn = pyodbc.connect('Driver={SQL Server};'
                       'Server=VOPPSCLDBN01\VOPPSCLDBI01;'
                       'Database=SalesForce;'
                       'Trusted_Connection=yes;')
-
 
 # FDC User ID and Name list
 user = pd.read_sql('SELECT DISTINCT(Id), Name \
@@ -27,12 +33,6 @@ user = user.set_index('Id')['Name'].to_dict()
 ##################################################################################################
 
 # SQL queries
-
-# Set date range
-now = datetime.datetime.now()
-start_year_def = now - relativedelta(years=3)
-start_date_def = str(start_year_def.year) + '-01-01'
-end_date_def = str(now.year) + '-12-31'
 
 # Date Definite data
 date_def_df = pd.read_sql("SELECT BK.OwnerId, BK.nihrm__Property__c, ac.Name, ac.BillingCountry, ag.Name, BK.Name, FORMAT(BK.nihrm__ArrivalDate__c, 'MM/dd/yyyy') AS ArrivalDate, FORMAT(BK.nihrm__DepartureDate__c, 'MM/dd/yyyy') AS DepartureDate, \
@@ -224,8 +224,8 @@ sm_inquiry.fillna("-", inplace = True)
 
 ##################################################################################################
 
-# Plot 1
-fig1 = make_subplots(rows=1, cols=2, subplot_titles=('Monthly Definite RNs', 'Monthly Definite RN Revenue and Rental Revenue'), 
+# Plot 10
+fig10 = make_subplots(rows=1, cols=2, subplot_titles=('Monthly Definite RNs', 'Monthly Definite RN Revenue and Rental Revenue'), 
                     column_widths=[0.05, 0.05], row_heights=[0.3], shared_xaxes=True)
 
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -239,14 +239,66 @@ bar2 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_produ
 
 bar3 = go.Bar(x=sm_current_production['Date Definite Month'], y=sm_current_production['Blended Rental Revenue'], name='Rental Revenue')
 
+fig10.add_trace(bar1, row=1, col=1)
+fig10.add_trace(bar2, row=1, col=2)
+fig10.add_trace(bar3, row=1, col=2)
+
+fig10.layout.xaxis.tickvals = months
+fig10.layout.xaxis.tickformat = '%b'
+
+fig10.update_layout(title='Definite Bookings', autosize=False, width=1800, height=500)
+
+
+# Plot 1
+fig1 = make_subplots(rows=2, cols=1, subplot_titles=('Monthly Definite RNs', 'Total RNs Definite in Sales Team'), 
+                    column_widths=[0.05], row_heights=[0.3, 0.3], shared_xaxes=True)
+
+
+sm_production = date_def_df
+current_year = 2022
+sm_current_production = sm_production[sm_production['Date Definite Year'] == current_year]
+sm_current_production.fillna("-", inplace = True)
+
+total_production = arrival_date_df[arrival_date_df['Status'] == 'Definite']
+
+# date range for bar chart
+current_year = datetime.datetime.now()
+end_year = now + relativedelta(years=2)
+#plot_start_date = str(current_year.year) + '-' + str(current_year.month) + '-01'
+plot_start_date = str(current_year.year) + '-' + '01' + '-01'
+plot_end_date = str(end_year.year) + '-' + str(end_year.month) + '-01'
+arrival_date_range = pd.date_range(start=plot_start_date, end=plot_end_date, freq='MS')
+
+arrival_date_label = arrival_date_range.strftime('%Y-%m').to_frame()
+
+#current_month = current_year.strftime("%b")
+current_month = 'Feb'
+
+sm_current_production['Arrival_year_month'] = pd.to_datetime(sm_current_production['Arrival']).dt.strftime('%Y-%m')
+
+sm_current_production_hist = sm_current_production[sm_current_production['Date Definite Month'] != current_month]
+sm_current_production_hist = sm_current_production_hist.groupby(['Arrival_year_month'])['Blended Roomnights'].sum().reset_index().set_index('Arrival_year_month')
+sm_current_production_hist = pd.merge(arrival_date_label, sm_current_production_hist, how='left', left_index=True, right_index=True).reset_index(drop=True).fillna(0)
+
+sm_current_production_curr = sm_current_production[sm_current_production['Date Definite Month'] == current_month]
+sm_current_production_curr = sm_current_production_curr.groupby(['Arrival_year_month'])['Blended Roomnights'].sum().reset_index().set_index('Arrival_year_month')
+sm_current_production_curr = pd.merge(arrival_date_label, sm_current_production_curr, how='left', left_index=True, right_index=True).reset_index(drop=True).fillna(0)
+
+total_production['Arrival_year_month'] = pd.to_datetime(total_production['Arrival']).dt.strftime('%Y-%m')
+total_production =  total_production.groupby(['Arrival_year_month'])['Blended Roomnights'].sum().reset_index().set_index('Arrival_year_month')
+total_production = pd.merge(arrival_date_label, total_production, how='left', left_index=True, right_index=True).reset_index(drop=True).fillna(0)
+
+bar1 = go.Bar(x=sm_current_production_hist[0], y=sm_current_production_hist['Blended Roomnights'])
+bar2 = go.Bar(x=sm_current_production_curr[0], y=sm_current_production_curr['Blended Roomnights'])
+line1 = go.Scatter(x=total_production[0], y=total_production['Blended Roomnights'], mode='lines+markers')
+
 fig1.add_trace(bar1, row=1, col=1)
-fig1.add_trace(bar2, row=1, col=2)
-fig1.add_trace(bar3, row=1, col=2)
+fig1.add_trace(bar2, row=1, col=1)
+fig1.add_trace(line1, row=2, col=1)
 
-fig1.layout.xaxis.tickvals = months
-fig1.layout.xaxis.tickformat = '%b'
-
-fig1.update_layout(title='Definite Bookings', autosize=False, width=1800, height=500)
+fig1.update_layout(title='Definite Bookings', autosize=False, width=2000, height=1000, barmode='stack', 
+                   xaxis = dict(title='Arrival Month', showticklabels=True, type='category', tickangle=45))
+fig1.update_xaxes(row=2, col=1, type='category', tickangle=45)
 
 
 
@@ -274,53 +326,10 @@ for i, month in enumerate(months):
 fig2.update_layout(title='Production Vs Budget', autosize=False, width=1500, height=750)
 
 
-
-# Plot 3
-
-cols = plotly.colors.DEFAULT_PLOTLY_COLORS
-
-fig3 = make_subplots(rows=3, cols=1, 
-                     column_widths=[0.5], row_heights=[0.8, 0.8, 0.8], shared_xaxes=True)
-
-history_count = booked_date_df.groupby(['Booked Month', 'Booked Year']).size().reset_index(name='NumberOfBK')
-history_count['to_sort']=history_count['Booked Month'].apply(lambda x: months.index(x))
-history_count = history_count.sort_values('to_sort')
-
-years = history_count['Booked Year'].unique().tolist()
-
-for i, year in enumerate(years):
-    line1 = go.Scatter(x=history_count[history_count['Booked Year'] == int(year)]['Booked Month'], 
-                       y=history_count[history_count['Booked Year'] == int(year)]['NumberOfBK'], 
-                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year), showlegend=False)
-    fig3.add_trace(line1, row=1, col=1)
-
-
-arrival_rn_revenue = arrival_date_df.groupby(['Arrival Month', 'Arrival Year']).sum().reset_index()
-arrival_rn_revenue['to_sort']=arrival_rn_revenue['Arrival Month'].apply(lambda x: months.index(x))
-arrival_rn_revenue = arrival_rn_revenue.sort_values('to_sort')
-
-years = arrival_rn_revenue['Arrival Year'].unique().tolist()
-
-for i, year in enumerate(years):
-    line1 = go.Scatter(x=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Arrival Month'], 
-                       y=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Blended Roomnights'], 
-                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year))
-
-    line2 = go.Scatter(x=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Arrival Month'], 
-                       y=arrival_rn_revenue[arrival_rn_revenue['Arrival Year'] == int(year)]['Blended Guestroom Revenue Total'], 
-                       mode='lines+markers', line={'color': cols[i]}, name=str(int(year)), legendgroup=str(year), showlegend=False)
-    
-    fig3.add_trace(line1, row=2, col=1)
-    fig3.add_trace(line2, row=3, col=1)
-
-fig3.update_layout(title='3 years Demand History Comparsion', xaxis_title='Month', xaxis_showticklabels=True)
-
-
-
 # Plot 4
-fig4 = make_subplots(rows=3, cols=1, subplot_titles=('Tentative Bookings', 'Prospect Bookings', 'Inquiries'), 
-                    column_widths=[0.05], row_heights=[0.3, 0.3, 0.3], vertical_spacing=0.1, horizontal_spacing=0.0, 
-                    specs=[[{"type": "table"}], [{"type": "table"}], [{"type": "table"}]])
+fig4 = make_subplots(rows=2, cols=1, subplot_titles=('Tentative Bookings', 'Prospect Bookings'), 
+                    column_widths=[0.05], row_heights=[0.3, 0.3], vertical_spacing=0.1, horizontal_spacing=0.0, 
+                    specs=[[{"type": "table"}], [{"type": "table"}]])
 
 table1_obj = go.Table(header = dict(values=bk_display_col),
                       cells = dict(values=[sm_current_business_t[k].tolist() for k in sm_current_business_t.columns[0:]]))
@@ -328,14 +337,29 @@ table1_obj = go.Table(header = dict(values=bk_display_col),
 table2_obj = go.Table(header = dict(values=bk_display_col),
                       cells = dict(values=[sm_current_business_p[k].tolist() for k in sm_current_business_p.columns[0:]]))
 
-table3_obj = go.Table(header = dict(values=inq_display_col),
-                      cells = dict(values=[sm_inquiry[k].tolist() for k in sm_inquiry.columns[0:]]))
 
 fig4.add_trace(table1_obj, row=1, col=1)
 fig4.add_trace(table2_obj, row=2, col=1)
-fig4.add_trace(table3_obj, row=3, col=1)
 
-fig4.update_layout(title='Current Business', autosize=False, width=1800, height=800)
+
+fig4.update_layout(title='Current Business', autosize=False, width=2000, height=1200)
+
+
+# Plot 5
+fig5 = make_subplots(rows=1, cols=1, subplot_titles='Inquiries', 
+                    column_widths=[0.05], row_heights=[0.3], vertical_spacing=0.1, horizontal_spacing=0.0, 
+                    specs=[[{"type": "table"}]])
+
+
+table3_obj = go.Table(header = dict(values=inq_display_col),
+                      cells = dict(values=[sm_inquiry[k].tolist() for k in sm_inquiry.columns[0:]]))
+
+
+fig5.add_trace(table3_obj, row=1, col=1)
+
+fig5.update_layout(title='Current Business', autosize=False, width=2000, height=1200)
+
+
 
 def figures_to_html(figs, filename):
     dashboard = open(filename, 'w')
@@ -345,6 +369,6 @@ def figures_to_html(figs, filename):
         dashboard.write(inner_html)
     dashboard.write("</body></html>" + "\n")
 
-figures_to_html([fig1, fig2, fig3, fig4], filename='performance_dashboard.html')
+figures_to_html([fig10, fig1, fig2, fig4, fig5], filename='performance_dashboard.html')
 
 ##################################################################################################
